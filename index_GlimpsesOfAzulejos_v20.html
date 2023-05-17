@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+    <meta charset="utf-8" />
+      <style>
+    body {
+      background: #FFFFFF;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: row;
+      margin: 0
+    }
+​
+    canvas {
+      margin: auto;
+      display: block;
+      box-shadow: 0 2px 12px -2px rgba(0, 0, 0, .15)
+    }
+  </style>
+  <title>Glimpses of Geometric Azulejos</title>
+  <script language="javascript" type="text/javascript" src="https://cdn.jsdelivr.net/npm/p5@1.3.1/lib/p5.js"></script>
+  <script id="fxhash-snippet">
+  //---- do not edit the following code (you can indent as you wish)
+  let alphabet = "123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ"
+  var fxhash = "oo" + Array(49).fill(0).map(_=>alphabet[(Math.random()*alphabet.length)|0]).join('')
+  let b58dec = str=>[...str].reduce((p,c)=>p*alphabet.length+alphabet.indexOf(c)|0, 0)
+  let fxhashTrunc = fxhash.slice(2)
+  let regex = new RegExp(".{" + ((fxhashTrunc.length/4)|0) + "}", 'g')
+  let hashes = fxhashTrunc.match(regex).map(h => b58dec(h))
+  let sfc32 = (a, b, c, d) => {
+    return () => {
+      a |= 0; b |= 0; c |= 0; d |= 0
+      var t = (a + b | 0) + d | 0
+      d = d + 1 | 0
+      a = b ^ b >>> 9
+      b = c + (c << 3) | 0
+      c = c << 21 | c >>> 11
+      c = c + t | 0
+      return (t >>> 0) / 4294967296
+    }
+  }
+  var fxrand = sfc32(...hashes)
+  // true if preview mode active, false otherwise
+  // you can append preview=1 to the URL to simulate preview active
+  var isFxpreview = new URLSearchParams(window.location.search).get('preview') === "1"
+  // call this method to trigger the preview
+  function fxpreview() {
+    console.log("fxhash: TRIGGER PREVIEW")
+  }
+  //---- /do not edit the following code
+  </script>
+</head>
+  <body>
+    <script>
+var iter;
+var tiles;
+var ctx;
+var originalBgdCol;
+var gNbVertices;
+var ix=iy=-1;
+var gXtraStep, gXtraStepDiag;
+var nbStrats;
+var nbPals;
+var zoom;
+var gDivisions;
+var gTileFillStyle = 0;
+var gTest = 0;
+var gDrawDone1=gDrawDone2=gDirtyingDone=false;
+var iDirty;
+var gChangeBgd;
+var gStop = false;
+var gClock = 0;
+var gIter, gIterOriginal;
+var gBgdCol;
+var gLinCol;
+var gCount;
+var gFilCols = [];
+var gCurrentPalette = [];
+var gPalettesInUse = [];
+var gStrat;
+var gStratsInUse = [];
+var gWp1; 
+var gSeed;
+var gTransX, gTransY;
+var gFramed, gLogod, gFrameStrat, gLogoStrat;
+var gThickness, gZoomOut, gLogo;
+var gDrawVol, gFaildraw;
+var gFramePalette, gLogoPalette;
+var gSaveAtTheEnd, gFinished, gLooping, gPd;
+var gRandomInteger, gIntruder;
+var gBlend;
+
+function setupSetup(adaptSizeToCurrentWindow) {
+  colorMode(HSB);
+  pixelDensity(1);
+  let canvasMaxWidth = 0.98*window.innerWidth;
+  let canvasMaxHeight = 0.98*window.innerHeight;
+  let canvasWidth = adaptSizeToCurrentWindow ? min(canvasMaxWidth, canvasMaxHeight) : 3000;
+  let cnv = createCanvas(round(canvasWidth), round(canvasWidth));
+  cnv.id('my-canvas');
+  pixelDensity(gPd+1);
+  pixelDensity(gPd);  
+  blendMode(BLEND);
+  colorMode(HSB);
+  globalInit();  
+}
+
+function setup() {
+  gSaveAtTheEnd = false;
+  initSeed();
+  gPd = 2;
+  setupSetup(true);
+}
+
+function initSeed(optionalSeedValue) {
+  if (optionalSeedValue)
+    gSeed = optionalSeedValue;
+  else {
+    var seeds = [];
+    for(let i = 0; i < 1; i++) {
+      seeds.push(int(fxrand()*pow(10,12)));
+    }
+    gSeed = seeds.join('');
+  }
+  randomSeed(gSeed);
+  noiseSeed(gSeed);  
+}
+
+function keyReleased() {
+  if (key == 'p' || key == 'P') {
+    if (!gFinished) {
+      if (gLooping) {
+        noLoop();
+      } else {
+        loop();
+      }
+      gLooping = !gLooping;
+    }
+  } else if (key == 's' || key == 'S') {
+    let quality = gPd == 2 ? "low" : gPd == 3 ? "medium" : "high"; 
+    saveCanvas("GoGA #" + gSeed + " (" + quality + " quality)" + (gFinished ? "" : " - unfinished"));
+  } else if (key == '1' || key == '2' || key == '3') {
+    noLoop();
+    gPd = int(key) + 1;
+    gSaveAtTheEnd = false;
+    initSeed(gSeed);
+    setupSetup(true);
+    loop();
+  } else if (key == 'q' ||key == 'Q') {
+    noLoop();
+    gPd = 3; 
+    gSaveAtTheEnd = true;
+    initSeed(gSeed);
+    setupSetup(false);
+    loop();
+  }
+}
+
+function pickPalette(optionalPaletteKey) {
+  var palette = [];
+  var palName;
+  if (optionalPaletteKey)
+    palName = optionalPaletteKey;
+  else
+    palName = random(gPaletteKeys);
+  var fullPalette = gPalettes.get(palName);
+  var nbCols = 2*int(random(1, 3));
+  for (let i = 0; i < nbCols; i++) {
+    palette.push(gColors.get(fullPalette[i == 0 ? 0 : int(random(1, fullPalette.length))]));
+  };
+  return palette;
+}
+
+function setGlobalPalette(palette) {
+  gCurrentPalette.length = 0;
+  for (let i = 0; i<palette.length; i++) {
+    gCurrentPalette.push(palette[i]);
+  }
+  gBgdCol = gCurrentPalette[0];
+  gLinCol = gCurrentPalette[1];  
+  gFilCols = gCurrentPalette;
+}
+
+function getRandomStrat(len, someStr) {
+  var some = (random(['0']).repeat(max(0, round((len - someStr.length)/2))) + someStr);
+  var ret = '';
+  for (let i = 0; i < len; i++) {
+    ret += some[i % some.length]
+  }
+  ret = ret == '020' ? random(['001', '002', '011', '021', '022']) : ret;
+  ret = ret == '0200' ? random(['1100', '1101', '1122', '1121', '1210', '2021', '2210']) : ret;
+  ret = ret == '00200' ? random(['10021', '10110', '11202', '11210', '11221', '12010', '12020', '12100', '12101', '12111', '12121', '12122', '20022', '20121', '20210', '20220', '21000', '21010', '21201', '21202', '22012', '22022', '22100', '22102', '22121']) : ret;
+  return ret;
+}
+
+function setGradient(center, size) {
+  noFill();
+  strokeWeight(size/122);
+  var nbIter = 66;
+  bgColLight = color(randomGaussian(hue(gBgdCol), 1), (0.93*saturation(gBgdCol) + 7), (1 + noise(center[0]/width*10, center[1]/width*10)*0.25)*brightness(gBgdCol));
+  for (let i = 0; i <= nbIter; i++) {
+    let inter = map(i, 1, nbIter, 0, 1);
+    let c = lerpColor(bgColLight, gBgdCol, inter);
+    stroke(c);
+    circle(center[0], center[1], i/nbIter*size);
+  }
+}
+function writeMetadata() {
+  console.log("gSeed: " + gSeed);
+  console.log("gDrawVol: " + gDrawVol);
+  console.log("gFaildraw: " + gFaildraw);
+  console.log("gLogod: " + gLogod);
+  console.log(gLogo);
+  console.log("gThickness: " + gThickness);
+  console.log("nbPals: " + gPalettesInUse.length)
+  console.log("nbStrats: " + gStratsInUse.length)
+  console.log("gTileFillStyle: " + gTileFillStyle)
+  console.log("gRandomInteger: " + gRandomInteger)
+  console.log("gBlend: " + gBlend)
+  window.$fxhashFeatures = {
+    "Shot length": gZoomOut ? "Long" : "Close-up",
+    "Tiles shape": gNbVertices == 4 ? "Square" : "Hexagon",
+    "Tiles divisions" : gXtraStepDiag ? "Diagonal" : gXtraStep ? "Subsquares" : "Normal",
+    "Drawing style": (gZoomOut || gFaildraw == 0) ? "Normal" : gFaildraw == 2 ? "Minimal" : "Strokes",
+    "Drawing precision": gDrawVol < 1/4000 ? "Robotic" : gDrawVol < 1/1000 ? "Precise" : gDrawVol < 1/300 ? "Imprecise" : gDrawVol < 1/49 ? "Childish" : "Random", 
+    "Frame": gFramed ? "Yes" : "No",
+    "Symbol": !gLogod ? "None" : gLogo == heart ? "Emma" : gLogo == archiSpiral ? "Sofia" : gLogo == cardioS ? "Lara" : gLogo == cardioM ? "Luísa" : gLogo == cardioL ? "Leonor" :  gLogo == lemnis ? "Beatriz" : gLogo == circl ? "Inês" : gLogo == oddros3 ? "Madalena" : gLogo == oddros4 ? "Clara" : gLogo == oddros5 ? "Mariana" : gLogo == oddros6 ? "Cláudia" : gLogo == evenros3 ? "Carolina" : gLogo == evenros4 ? "Matilde" : gLogo == evenros5 ? "Camila" : gLogo == evenros6 ? "Margarida" : "None",
+    "Palettes": gPalettesInUse.length < 2 ? "1 or 2" : gPalettesInUse.length < 7 ? "A few" : gPalettesInUse.length < 13 ? "A lot" : "Too many",
+    "Tiles styles": gStratsInUse.length < 2 ? "1 or 2" : gStratsInUse.length < 7 ? "A few" : gStratsInUse.length < 13 ? "A lot" : "Too many",
+    "Luminosity for close-ups": gZoomOut ? "N/A" : gBlend == "DODGE" ? "Light" : "Dark"
+  }
+  console.log(window.$fxhashFeatures);
+}
+
+function globalInit() {
+  resetMatrix();
+  tiles = [];
+  tiles.length = 0;
+  gLooping = true;  
+  iter = 0;
+  gFinished = false;
+  gBlend = random(["DODGE", "OVERLAY"])
+  ix=-1;
+  iy=-1;  
+  gTileFillStyle = 0;
+  gDrawDone1=false;
+  gDrawDone2=false;
+  gDirtyingDone=false;
+  iDirty = 0;
+  gRandomInteger = 0;
+  gIntruder = 0;  
+  gFilCols.length = 0;
+  gCurrentPalette.length = 0;
+  gPalettesInUse.length = 0;
+  gStratsInUse.length = 0;  
+  initColors();
+  initPalettes();
+  gZoomOut = random(1) < 0.45;//
+  gLogo = random([heart, archiSpiral, cardioS, cardioM, cardioL, lemnis, circl, oddros3, oddros4, oddros5, oddros6, evenros3, evenros4, evenros5, evenros6])
+  gThickness = gZoomOut? random([2, 3, 4, 5]) : 2;
+  gRandomInteger = int(random(-10, 11));
+  gDrawVol = random([0, 0, 0, 1/3184, 1/2000, 1/700, 1/600, 1/500, 1/400, 1/350, 1/100, 1/80, 1/10]);
+  gFaildraw = random([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2]);
+  if (gZoomOut) {
+    gFaildraw = 0;
+    if (random(1) < 0.95)
+      gDrawVol /= 16.18
+  }
+  zoom = int(random(0, 3));
+  gIter = int(random(3.5 + zoom/2, 5 + zoom/2));//int(random(3, 6));
+  gIterOriginal = gIter;
+  gDivisions = (int(random(10, 11)) - zoom) * (gZoomOut ? (random(1) < 0.1 ? 2 : 3) : 1);
+  gNbVertices = random([4, 4, 4, 6]);
+  gXtraStep = random(0, 1) < 0.52 && gNbVertices == 4;
+  gChangeBgd = random(0, 1) < 0.5;
+  gXtraStepDiag = !gChangeBgd && random(0, 1) < 0.1618 && gNbVertices == 4;
+  nbPals = random(0, 1) < 0.05 ? 1 : max(2, int(randomGaussian(4, gDivisions/10)));
+  if (random(0, 1) < 0.05)
+    nbPals = int(pow(gDivisions, 2)/2);
+  for (let i=0; i<nbPals; i++) {
+    gPalettesInUse.push(pickPalette());
+  }
+  if (nbPals > 2 && random(0, 1) < 0.5) {
+    for (let i = 2; i < nbPals; i++) {
+      gPalettesInUse.push(gPalettesInUse[nbPals - i]);
+    }
+  }
+  originalBgdCol = gColors.get("solitude");
+  background(originalBgdCol);
+  gBgdCol = gPalettesInUse[0][0];
+  gLinCol = gPalettesInUse[0][1];
+  nbStrats = gZoomOut && (random(1) < 0.05) ? 1 : int(random(1, gDivisions));
+  if (random(0, 1) < 0.05)
+    nbStrats = int(pow(gDivisions, 2)/2);   
+  for (let i=0; i<nbStrats; i++) {
+    var randNbInTernary = CONVERT_TO_TERNARY(int(random(1, 9)));
+    var strat = getRandomStrat(gIter, randNbInTernary);
+    gStratsInUse.push(strat);
+  }
+  if (nbStrats > 2 && random(0, 1) < 0.5) {
+    for (let i = 2; i < nbStrats; i++) {
+      gStratsInUse.push(gStratsInUse[nbStrats - i]);
+    }
+  }
+  gWp1 = random(0.55, 0.7 + 0.1*zoom);
+  gTest=0;
+  gTileFillStyle = gFaildraw > 0 ? 0 : int(random(0, 2));
+  gCount = 0;
+  gFramed = !gXtraStepDiag && gNbVertices == 4 && (random(1) < (gZoomOut ? 0.8 : 0.32));
+  gLogod = (gZoomOut && random(1) < 0.96) || (random(1) < 0.39);
+  gFramePalette = random(gDarkPaletteKeys);
+  gLogoPalette = random(gDarkPaletteKeys);
+  if (gFramed)
+    gFrameStrat = random(["001", "002", "010", "020"]);
+  if (gLogod)
+    gLogoStrat = random(["001", "002", "010", "020"]);  
+  gTransX = gNbVertices == 6 ? width/gDivisions/2 : (gFramed||gLogod) ? 0 : -random(min(.2*width/gDivisions, width/30), min(.8*width/gDivisions, width/12));
+  gTransY = (gFramed ||gLogod) ? 0 : -random(.2*height/gDivisions, .8*height/gDivisions);
+  writeMetadata();
+}
+
+const lemnis = (x, y) => {
+  var r2 = (x**2 + y**2)
+  var theta = atan2(y, x);
+  return abs(r2 - (width*width)/9*cos(2*theta)) < ((0.4+0.8*gThickness)*width/gDivisions)**2;
+}
+
+const archiSpiral = (x, y) => {
+  var r = sqrt(x**2 + y**2)
+  var theta = atan2(y, x);
+  return (abs(r - width/gDivisions*theta) < ((0.41*gThickness)*width/gDivisions)) || (abs(r - width/gDivisions*(theta + 2*PI)) < ((0.41*gThickness)*width/gDivisions)) || (abs(r - width/gDivisions*(theta + 4*PI)) < ((0.41*gThickness)*width/gDivisions)) || (abs(r - width/gDivisions*(theta + 6*PI)) < ((0.41*gThickness)*width/gDivisions)) || (abs(r - width/gDivisions*(theta - 2*PI)) < ((0.41*gThickness)*width/gDivisions)) || (abs(r - width/gDivisions*(theta - 4*PI)) < ((0.41*gThickness)*width/gDivisions)) || (abs(r - width/gDivisions*(theta - 6*PI)) < ((0.41*gThickness)*width/gDivisions));
+}
+
+const cardioL = (x, y) => {
+  var r = sqrt(x**2 + (y + width/2.83)**2)
+  var theta = atan2(y + width/2.83, x);
+  return abs(r + 0.65*width*(0.1 - sin(theta))) < ((0.51+0.75*gThickness)*width/gDivisions);
+}
+
+const cardioM = (x, y) => {
+  var r = sqrt(x**2 + (y + width/2.75)**2)
+  var theta = atan2(y + width/2.75, x);
+  return abs(r + 0.75*width*(0.25 - sin(theta))) < ((0.51+0.75*gThickness)*width/gDivisions);
+}
+
+const cardioS = (x, y) => {
+  var r = sqrt(x**2 + (y + width/4)**2)
+  var theta = atan2(y + width/4, x);
+  return abs(r + 0.8*width*(0.475 - sin(theta))) < ((0.51+0.75*gThickness)*width/gDivisions);
+}
+
+
+const circl = (x, y) => {
+  var r2 = (x**2 + (y+width/29)**2)
+  return abs(r2 - (width*width)/16) < (gThickness*1.05*width/gDivisions)**2;
+}
+
+const oddros3 = (x, y) => {
+  var r = sqrt(x**2 + (y-width/19)**2)
+  var theta = atan2((y-width/19), x);
+  return abs(r - (width/3 + 1.2*width/gDivisions)*sin(3*theta)) < ((0.51+0.5*gThickness)*width/gDivisions);
+}
+
+const oddros4 = (x, y) => {
+  var r = sqrt(x**2 + (y + width/29)**2)
+  var theta = atan2((y + width/29), x);
+  return abs(r - (width/3 + 1.2*width/gDivisions)*sin(4*theta)) < ((0.51+0.5*gThickness)*width/gDivisions);
+}
+
+const oddros5 = (x, y) => {
+  var r = sqrt(x**2 + (y - width/55)**2)
+  var theta = atan2((- y + width/55), x);
+  return abs(r - (width/3 + 1.2*width/gDivisions)*sin(5*theta)) < ((0.51+0.5*gThickness)*width/gDivisions);
+}
+
+const oddros6 = (x, y) => {
+  var r = sqrt(x**2 + (y + width/20)**2)
+  var theta = atan2((y + width/20), x);
+  return abs(r - 0.94*(width/3 + 1.2*width/gDivisions)*sin(6*theta)) < ((0.51+0.5*gThickness)*width/gDivisions);
+}
+
+const evenros3 = (x, y) => {
+  var r = sqrt((x + width/23)**2 + (y + width/29)**2)
+  var theta = atan2((y + width/27), (x + width/23));
+  return abs(r - (width/3 + 1.2*width/gDivisions)*cos(3*theta)) < ((0.5+0.5*gThickness)*width/gDivisions);
+}
+ 
+const evenros4 = (x, y) => {
+  var r = sqrt(x**2 + (y+width/23)**2)
+  var theta = atan2((y+width/23), x);
+  return abs(r - 0.95*(width/3 + 1.2*width/gDivisions)*cos(4*theta)) < ((0.5+0.5*gThickness)*width/gDivisions);
+}
+
+const evenros5 = (x, y) => {
+  var r = sqrt((x + width/23)**2 + (y + width/29)**2)
+  var theta = atan2((y + width/27), (x + width/23));
+  return abs(r - (width/3 + 1.2*width/gDivisions)*cos(5*theta)) < ((0.51+0.5*gThickness)*width/gDivisions);
+}
+
+const evenros6 = (x, y) => {
+  var r = sqrt(x**2 + (y+width/31)**2)
+  var theta = atan2((y+width/31), x);
+  return abs(r - (width/3 + 1.2*width/gDivisions)*cos(6*theta)) < ((0.5+0.5*gThickness)*width/gDivisions);
+}
+
+const heart = (x, y) => {
+  var r = sqrt(x**2 + (y + width/3.8)**2)
+  var theta = atan2((- y - width/3.8), x);
+  var ret = (abs(r - width/9*(2 - 3.1*sin(theta) + sin(theta)*sqrt(abs(0.75*cos(theta)))/(1.4 + sin(theta)))) < ((0.01+(r < 1.9*width/gDivisions ? 0.65 : 0.45)*gThickness)*width/gDivisions));
+  r = sqrt(x**2 + (y + width/3.81)**2)
+  theta = atan2(- y - width/3.81, x);
+  ret = ret || (abs(r - width/108*(2 - 3.3*sin(theta) + sin(theta)*sqrt(abs(1.8*cos(theta)))/(1.28 + sin(theta)))) < ((0.01+(0.3)*gThickness)*width/gDivisions));
+  return ret;
+}
+
+
+function isLogo(ix, iy) {
+  var x = (ix/gDivisions - 0.5 + 1/gDivisions/2)*width
+  var y = (iy/gDivisions - 0.5 - 1/gDivisions/2)*width
+  return gLogo(x,y);
+}
+
+function draw() {
+  if (!gDrawDone1) {
+    translate(gTransX, gTransY);
+    rotate(randomGaussian(0, 0.001));
+    let isFrame = gFramed && gNbVertices == 4 && (ix==0 || ix == gDivisions-1 || iy==0 || iy == gDivisions-1);
+    let isLogod = gLogod && isLogo(ix, iy);
+    setGlobalPalette(isFrame ? pickPalette(gFramePalette) : isLogod ? pickPalette(gLogoPalette) : gPalettesInUse[iter%gPalettesInUse.length]);
+    gStrat = (gFramed && (ix==0 || ix == gDivisions-1 || iy==0 || iy == gDivisions-1)) ? gFrameStrat : isLogod ? gLogoStrat : gStratsInUse[iter%gStratsInUse.length];
+    gIter = isFrame ? 3 : gIterOriginal;
+    var xRand = min(1, max(-1,randomGaussian(0, 1/5000)));
+    var yRand = min(1, max(-1,randomGaussian(0, 1/5000)));
+    var x = (1/gDivisions/2*(1-(gNbVertices/2%2)*((iy/cos(PI/gNbVertices)+2*gRandomInteger)%2)) + ix/gDivisions + xRand)*width;
+    var y = (1/gDivisions/2 + iy/gDivisions + yRand)*height;
+    var xtraDrawByIter = new p5.TypedDict();
+    xtraDrawByIter.set(0, true);xtraDrawByIter.set(1, true);xtraDrawByIter.set(2, true);
+    var tile = new Tile([x, y], width/gDivisions, gNbVertices, isFrame? xtraDrawByIter : null);
+    if (!gChangeBgd)
+      gBgdCol = originalBgdCol;
+    tile.drawBackground(gBgdCol);
+    setGradient([x, y], width/gDivisions);
+    gDrawDone1 &= tile.draw();
+    drawSeparations(originalBgdCol, tile);
+    tiles.push(tile);
+    iter++;
+    ix++;
+    if (ix > gDivisions && iy > gDivisions) {
+      if (!gZoomOut)
+        drawAllSeparations(tiles);
+      gDrawDone1 = true;
+    }
+    if (ix>gDivisions) {
+      iy+=(gNbVertices/2%2)?cos(PI/gNbVertices):1;
+      ix=-1;
+    }
+  }
+  else {
+    if (iDirty > 5000 || gZoomOut) {
+      if (!gZoomOut) {
+        worleyThatShit();
+      }
+      noLoop();
+      gLooping = false;
+      gFinished = true;    
+      fxpreview();
+      if (gSaveAtTheEnd) {
+        saveCanvas(["GoGA #", gSeed, " (best quality)"].join(''))
+        gSaveAtTheEnd = false;
+      }
+      console.log("gIntruder: " + gIntruder);
+    } else if (!gZoomOut) {
+      dirtyThatShit();
+    }
+  }
+}
+
+function dirtyThatShit() {
+  let i=j=0;
+  while (i<20) {
+    while (j<20) {
+      let xx=random(0, 1)*width;
+      let yy=random(0, 1)*height;
+      let nz=noise(xx/width,yy/height);
+      if (nz>0.25) {
+        stroke(color(color(hue(gBgdCol), 0.3*saturation(gBgdCol), 0.6*brightness(gBgdCol), 0.9*nz)));
+        line(xx, yy, xx + randomGaussian(0, width/1000), yy + randomGaussian(0, height/1000));
+      }
+      j++; 
+    }
+    j=0
+    i++;
+  }
+  iDirty+=500;
+}
+
+function worleyThatShit() {
+  blendMode(gBlend == "DODGE" ? DODGE : OVERLAY)
+  noStroke();
+  let points = [];
+  for (let i = 0; i < 20; i++) {
+    points[i] = createVector(random(1)*width, random(1)*width, random(1)*width);
+  }
+  let stepFact = 1/369; 
+  let pow = 2
+  for (let x = 0; x < width; x+=width*stepFact) {
+    for (let y = 0; y < height; y+=height*stepFact) {
+      let leftBordD = ((x*gDivisions)%(width))/gDivisions;
+      let upBordD = ((y*gDivisions)%(height))/gDivisions;
+      let fact = (gBlend == "DODGE" ? 0.3: 0.54)*noise(2*x/width, 2*y/width)
+      if (blend == "DODGE")
+        fact *= (1-((leftBordD - width/gDivisions/2)**pow + (upBordD - height/gDivisions/2)**pow)**(1/pow)/width*gDivisions*2);
+      if (blend == "OVERLAY")
+        fact *= ((leftBordD - width/gDivisions/2)**pow + (upBordD - height/gDivisions/2)**pow)**(1/pow)/width*gDivisions*2;
+      let distances = [];
+      for (let i = 0; i < points.length; i++) {
+        let v = points[i];
+        let z = int(width/1.5);
+        let d = dist(x, y, z, v.x, v.y, v.z);
+        distances[i] = d;
+      }
+      let sorted = sort(distances);
+      let h = map(sorted[1], 0, width/17, 200, 300);
+      let a = map(sorted[0], 0, width/20, 0, fact*0.12);
+      let b = map(sorted[2], 0, width/5, 80, 60);
+      fill(h, 15, b, a)
+      ellipse(randomGaussian(x, width/1618), randomGaussian(y, height/1618), randomGaussian(1.9,0.1)*width*stepFact, randomGaussian(1.9,0.1)*height*stepFact);
+    }
+  }
+}
+
+function drawAllSeparations(tiles) {
+  var col = color(hue(gPalettesInUse[0][0]), 0.6*saturation(gPalettesInUse[0][0]), brightness(gPalettesInUse[0][0]), 0.3);
+  for (let i=0; i<tiles.length; i++) {
+    tiles[i].drawSeparations(col, 51 * (gNbVertices > 4 ? 1.2 : 1), gXtraStep, gXtraStepDiag);
+  }
+  col = color(hue(gBgdCol), 0.45*saturation(gBgdCol), 0.9*brightness(gBgdCol), 0.5);
+  for (let i=0; i<tiles.length; i++) {
+    tiles[i].drawSeparations(col, 25 * (gNbVertices > 4 ? 1.2 : 1), gXtraStep, gXtraStepDiag);
+  }
+  col = color(color(hue(gBgdCol), 0.3*saturation(gBgdCol), 0.6*brightness(gBgdCol), 0.75))
+  for (let i=0; i<tiles.length; i++) {
+    tiles[i].drawSeparations(col, 9 * (gNbVertices > 4 ? 1.2 : 1), gXtraStep, gXtraStepDiag);
+  }
+}
+
+function drawSeparations(colr, tile) {
+  var col = color(hue(gPalettesInUse[0][0]), 0.6*saturation(gPalettesInUse[0][0]), brightness(gPalettesInUse[0][0]), 0.4);
+  tile.drawSeparations(col, 51 * (gNbVertices > 4 ? 1.2 : 1), gXtraStep, gXtraStepDiag);
+  
+  col = color(hue(colr), 0.45*saturation(colr), 0.9*brightness(colr), 0.6);
+  tile.drawSeparations(col, 25 * (gNbVertices > 4 ? 1.2 : 1), gXtraStep, gXtraStepDiag);
+
+  col = color(color(hue(colr), 0.3*saturation(colr), 0.6*brightness(colr), 0.9))
+  tile.drawSeparations(col, 9 * (gNbVertices > 4 ? 1.2 : 1), gXtraStep, gXtraStepDiag);
+}
+
+class Tile {
+  constructor(center, size, nbVertices, optionalXtraDrawByIter) {
+    this.center = center;
+    this.size = size;
+    this.nbVertices = nbVertices;
+    this.drawVol =  gDrawVol;
+    let dIntrud = random(1) < 0.002;
+    if (dIntrud) {
+      let dVol = random([0, 1/10]);
+      if (abs(dVol - gDrawVol) > 1/999) {
+        gIntruder++
+        this.drawVol = dVol;
+      }
+    }
+    let tamere = new p5.TypedDict();
+    for (let i=0; i<gIter; i++)
+      tamere.set(i, i<gIter*0.5 && random(0, 1) < 0.5);
+    if (optionalXtraDrawByIter == null) {
+      this.xtraDrawByIter = tamere;
+    } else {
+      this.xtraDrawByIter = optionalXtraDrawByIter;
+    }
+    this.setVertices();
+    this.currentIter = 0;
+  }
+  
+  setVertices() {
+    this.vertices = [];
+    for(let i=0; i<this.nbVertices; i++) {
+      let x = this.size/2/cos(PI/this.nbVertices)*cos(2*PI*(i + 0.5)/this.nbVertices) + this.center[0];
+      let y = this.size/2/cos(PI/this.nbVertices)*sin(2*PI*(i + 0.5)/this.nbVertices) + this.center[1];
+      this.vertices.push([x, y]);
+    }    
+  }
+  
+  drawBackground(col) {
+    fill(col);
+    STROKE_WEIGHT(0);
+    beginShape()
+    for(let i=0; i<this.nbVertices + 1; i++) {
+      vertex(this.vertices[i%this.nbVertices][0], this.vertices[i%this.nbVertices][1]);
+    }
+    endShape();
+    if (false) {
+      let c = 0;
+      while (c<333) {
+        var filCol = gFilCols[c % gFilCols.length];
+        fill(hue(filCol), 100, 100, 0.28);
+        let pt = [randomGaussian(this.center[0], this.size/5), randomGaussian(this.center[1], this.size/5)];
+        pt = this.projectIntoTile(pt);
+        circle(pt[0], pt[1], randomGaussian(this.size/33, this.size/100));
+        c++;
+      }
+    }
+    return true;    
+  }
+  
+  drawSeparations(col, weight, extraSep, diag) {
+    stroke(col);
+    let sWeight = (weight - 0.162*weight*extraSep)/gDivisions;
+    STROKE_WEIGHT(sWeight);
+    if (!diag)
+      beginShape()
+    for(let i=0; i<this.nbVertices; i++) {
+      vertex(this.vertices[i][0], this.vertices[i][1]);
+      if (!diag) {
+        push();
+        fill(randomGaussian(hue(col), 3), randomGaussian(saturation(col), 1), randomGaussian(brightness(col), 1), 0.22*alpha(col));
+        for (let t=0; t<66; t++) {
+          let rnd = random(0, 1);
+          let ptExact = GET_BARYCENTER([this.vertices[i], this.vertices[(i+1)%this.nbVertices]], [rnd, 1 - rnd]);
+          let ptInexact = [randomGaussian(ptExact[0], width/6180), randomGaussian(ptExact[1], height/6180)];
+          let center = GET_MIDPOINT(ptExact, ptInexact);
+          ellipse(center[0], center[1], max(0.2*sWeight, abs(ptExact[0] - ptInexact[0])), max(0.2*sWeight, abs(ptExact[1] - ptInexact[1])));
+        }
+        pop();
+      }
+      if (extraSep || diag) {
+        let midPoint = diag ? this.vertices[i] : GET_MIDPOINT(this.vertices[i], this.vertices[(i + 1) % this.nbVertices]);
+        let symPoint = diag ? this.vertices[(i + this.nbVertices/2) % this.nbVertices] : GET_SYMMETRICPOINT(midPoint, this.center);
+        line(midPoint[0], midPoint[1], symPoint[0], symPoint[1]);
+        push();
+        fill(randomGaussian(hue(col), 3), randomGaussian(saturation(col), 1), randomGaussian(brightness(col), 1), 0.22*alpha(col));
+        for (let t=0; t<66; t++) {
+          let rnd = random(0, 1);
+          let ptExact = GET_BARYCENTER([midPoint, symPoint], [rnd, 1 - rnd]);
+          let ptInexact = [randomGaussian(ptExact[0], width/6180), randomGaussian(ptExact[1], height/6180)];
+          let center = GET_MIDPOINT(ptExact, ptInexact);
+          ellipse(center[0], center[1], max(0.16*sWeight, abs(ptExact[0] - ptInexact[0])), max(0.16*sWeight, abs(ptExact[1] - ptInexact[1])));
+        }
+        pop();        
+      }
+    }
+    if (!diag)
+      endShape();
+    return true;
+  }
+  
+  // Adapted from https://josvromans.com/blog/2021/1/triangle-subdivisions/
+  draw() {
+    for(let i=0; i<this.nbVertices; i++) {
+      this.divideIntoTriangles([this.center, this.vertices[i], this.vertices[(i + 1)%this.nbVertices]], 0);
+    } 
+    noFill(); 
+    return true;
+  }
+
+  divideIntoTriangles(vertices, i){
+    if (i>this.currentIter) {
+      // gCount++;
+      this.currentIter = i;
+    }
+    if (i < gIter) {
+      if(this.xtraDrawByIter.get(i)) {
+        var filColl = gFilCols[gCount % gFilCols.length];
+        fill(color(hue(filColl), saturation(filColl), brightness(filColl), 0.9*i/gIter*alpha(filColl)));
+        STROKE_WEIGHT(0.06);
+        this.drawPolygon(vertices, filColl);
+      }
+      var index = gStrat[i % gStrat.length];
+      var vertex = vertices.splice(index, 1)[0];
+      var midpoint = GET_MIDPOINT(vertices[0], vertices[1]);
+      var nexVertices = 0;
+      this.divideIntoTriangles([vertex, midpoint, vertices[0]], i + 1);
+      this.divideIntoTriangles([vertex, midpoint, vertices[1]], i + 1);
+    } 
+    else {
+      var filCol = gFilCols[gCount % gFilCols.length];
+      fill(filCol);
+      STROKE_WEIGHT(gIter > 4 ? 0 : gIter == 4 ? 1.3 : 2);
+      this.drawPolygon(vertices, filCol);
+      gCount++;
+    }
+  }
+
+  drawPolygon(vertexList, filCol){
+    let linCol = (gLinCol == filCol) ? gFilCols[2 % gFilCols.length] : gLinCol;
+    stroke(linCol);
+    let cp = this.getControlPoints(vertexList);
+    beginShape();
+    let pt = [[vertexList[0][0] + (gZoomOut ? 0 : randomGaussian(0, width*(gFaildraw == 1 ? this.fukyou : this.drawVol))), vertexList[0][1] + randomGaussian(0, width*this.drawVol)], [vertexList[1][0] + randomGaussian(0, width*(gFaildraw == 2 ? this.fukyou : this.drawVol)), vertexList[1][1] + randomGaussian(0, width*this.drawVol)]];
+    pt = [this.projectIntoTile(pt[0]), this.projectIntoTile(pt[1])];
+    vertex(pt[0][0], pt[0][1]);
+    bezierVertex(cp[0][0], cp[0][1], cp[1][0], cp[1][1], pt[1][0], pt[1][1]);
+    bezierVertex(cp[3][0], cp[3][1], cp[2][0], cp[2][1], pt[0][0], pt[0][1]);
+    vertex(pt[1][0], pt[1][1]);   
+    endShape();
+  }
+  
+  getControlPoints(vertexList) {
+    let cp = [];
+    let wp1 = gWp1;
+    cp.push(GET_BARYCENTER(vertexList, [1-wp1, wp1/2, wp1/2]));
+    cp.push(GET_BARYCENTER(vertexList, [wp1/2, 1-wp1, wp1/2]));
+    if (gTileFillStyle) {
+      cp.push(GET_BARYCENTER(vertexList, [1.4*wp1, 1.4*wp1, 1-2.8*wp1]));
+      cp.push(cp[2]);//GET_BARYCENTER(vertexList, [-wp1/2, 1+wp1, -wp1/2]));
+    } else {
+      cp.push(GET_BARYCENTER(vertexList, [1+wp1, -wp1/2, -wp1/2]));
+      cp.push(GET_BARYCENTER(vertexList, [-wp1/2, 1+wp1, -wp1/2]));
+    }
+    for (let i = 0; i<cp.length; i++) {
+      cp[i] = this.projectIntoTile(cp[i]);
+    }
+    return cp;
+  }
+  
+  projectIntoTile(pt) {
+    if (GET_DISTANCE(this.center, pt) < this.size/2)
+      return pt;
+    var ang = GET_ANGLE(this.center, [this.center[0] + 1, this.center[1]], this.center, pt);
+    var n = this.nbVertices;
+    var i = int((2*this.nbVertices - 1 - (ang + (2 - 1/n)*PI)/2/PI*n)%n);
+    var projPt = GET_INTERSECTION(this.vertices[i], this.vertices[(i + 1)%this.nbVertices], this.center, pt);
+    return GET_DISTANCE(this.center, projPt) < GET_DISTANCE(this.center, pt) ? projPt : pt;
+  }
+}
+
+var gPalettes = new p5.TypedDict();
+const gDarkPaletteKeys = ['NY', 'Obelisk', 'Brunette', 'Geebung', 'Sputnik', 'Filmpro', 'Azure'];
+const gPaletteKeys = ['Calypso', 'Biscotti', 'Bayoux', 'Solitude', 'Botticelli', 'Nemo', 'Voodoo', 'Roti', 'Rust', 'Bud', 'Oasis', 'Ship', 'Satin', 'Farm', 'Athena', 'Tiara', 'Elsa', 'Pearl', 'Bay'];
+var gColors = new p5.TypedDict();
+
+function initColors() {
+  gColors.create("newYorkPink", color(1, 42, 83));
+  gColors.create("petiteOrchid", color(1, 30, 89));
+  gColors.create("chestnut", color(1, 56, 73));
+  gColors.create("auburn", color(1, 76, 65));
+  gColors.create("vanillaIce", color(1, 13, 94));
+  
+  gColors.create("doubleBiscotti", color(31, 24, 84));
+  gColors.create("satinOrange", color(12, 87, 75));
+  gColors.create("sepia", color(18, 51, 64));
+  gColors.create("paleTaupe", color(25, 34, 71));
+  gColors.create("rock spray", color(13, 74, 63));
+  
+  gColors.create("obelisk", color(180, 21, 44));
+  gColors.create("halfInnocence", color(165, 11, 57));
+  gColors.create("smoke", color(105, 13, 49));
+  gColors.create("yellowishGrey", color(64, 7, 67));
+  gColors.create("gurkha", color(56, 25, 57));
+  
+  gColors.create("crownOfThorns", color(8, 59, 47));
+  gColors.create("brunette", color(4, 39, 40));
+  gColors.create("halfLumberjack", color(8, 33, 52));
+  gColors.create("fedora", color(316, 14, 39));
+  gColors.create("cinereous", color(14, 19, 61));
+  
+  gColors.create("geebung", color(38, 82, 84));
+  gColors.create("goldDust", color(39, 51, 56));
+  gColors.create("intrepid", color(39, 69, 67));	
+  gColors.create("putty", color(41, 48, 79));
+  gColors.create("lightYellow", color(63, 12, 55));
+  
+  gColors.create("sputnik", color(223, 37, 34));
+  gColors.create("hammerhead", color(223, 25, 40));
+  gColors.create("regatta", color(225, 56, 27));
+  gColors.create("raven", color(223, 14, 49));
+  gColors.create("voltage", color(220, 6, 61));	
+  
+  gColors.create("filmproOrange", color(9, 75, 82));
+  gColors.create("japonica", color(12, 52, 83));
+  gColors.create("kamikaze", color(10, 68, 65));	
+  gColors.create("bamboo", color(25, 66, 75));
+  gColors.create("rose", color(13, 34, 83));
+  
+  
+  gColors.create("windowsBlue", color(214, 68, 86));
+  gColors.create("mediumBlue", color(214, 73, 74));
+  gColors.create("funBlue", color(215, 79, 70));
+  gColors.create("azure", color(216, 71, 66));
+  gColors.create("toryBlue", color(217, 86, 68));
+  gColors.create("airForceBlue", color(206, 43, 70));
+  gColors.create("filmproSkyBlue", color(214, 58, 57));
+  gColors.create("eskimo", color(198, 13, 84));
+  gColors.create("submerge", color(220, 78, 46));
+  gColors.create("calypso", color(202, 50, 52));
+  gColors.create("quarterJoss", color(29, 13, 91));
+  gColors.create("romanSilver", color(214, 16, 58));
+  gColors.create("doubleRakaia", color(9, 2, 66));
+  gColors.create("blueBayoux", color(213, 34, 50));
+  gColors.create("bondiBlue", color(213, 71, 42));
+  gColors.create("solitude", color(247, 3, 93));
+  gColors.create("fairytale", color(236, 9, 84));
+  gColors.create("ceil", color(223, 29, 83));
+  gColors.create("darkTurquoise", color(222, 43, 81));
+  gColors.create("indigo", color(224, 57, 75));
+  gColors.create("columbiaBlue", color(196, 11, 85));
+  gColors.create("regentStBlue", color(192, 28, 82));
+  gColors.create("hoki", color(194, 34, 52));
+  gColors.create("meltwater", color(192, 41, 72));
+  gColors.create("botticelli", color(195, 19, 68));
+  gColors.create("kimberly", color(233, 36, 64));
+  gColors.create("lightSteelBlue", color(233, 25, 72));
+  gColors.create("nemo", color(234, 14, 79));
+  gColors.create("twilight", color(234, 49, 56));
+  gColors.create("rollingFog", color(242, 3, 88));
+  gColors.create("voodoo", color(301, 23, 27));
+  gColors.create("whiskey", color(26, 56, 76));
+  gColors.create("moderateCobaltBlue", color(228, 45, 65));
+  gColors.create("monsoon", color(355, 4, 49));
+  gColors.create("quarterSurrender", color(157, 2, 84));
+  gColors.create("slateGrey", color(217, 22, 59));
+  gColors.create("hillary", color(51, 25, 64));
+  gColors.create("superhero", color(225, 57, 51));
+  gColors.create("roti", color(45, 64, 80));
+  gColors.create("cadetBlue", color(235, 8, 83));
+  gColors.create("rhythm", color(234, 27, 60));
+  gColors.create("greyOlive", color(45, 21, 64));
+  gColors.create("fishNChips", color(39, 66, 87));
+  gColors.create("copperRust", color(5, 44, 61));
+  gColors.create("greyNurse", color(88, 3, 83));
+  gColors.create("bud", color(78, 15, 64));
+  gColors.create("laser", color(45, 49, 79));
+  gColors.create("sorrellBrown", color(43, 29, 79));
+  gColors.create("tulipTree", color(41, 75, 90));  
+  gColors.create("tripleThorndonCream", color(43, 13, 83));
+  gColors.create("manatee", color(232, 12, 68));
+  gColors.create("desert", color(43, 55, 80));
+  gColors.create("mariner", color(228, 47, 61));
+  gColors.create("flax", color(67, 32, 51));
+  gColors.create("shipCove", color(215, 33, 65));
+  gColors.create("moderateCobaltBlue", color(218, 56, 62));
+  gColors.create("washedGreen", color(68, 12, 57));
+  gColors.create("heather", color(206, 11, 84));
+  gColors.create("moderateAmber", color(45, 55, 65));
+  gColors.create("halfBlanc", color(30, 8, 90));
+  gColors.create("romanCoffee", color(19, 39, 49));
+  gColors.create("greyblue", color(199, 36, 71));
+  gColors.create("spinnaker", color(203, 54, 41));
+  gColors.create("satinSheenGold", color(42, 77, 79));
+  
+  gColors.create("quarterMilkWhite", color(41, 3, 92));
+  gColors.create("paleSlate", color(5, 2, 75));
+  gColors.create("tonto", color(1, 8, 61));
+  gColors.create("eighthBarista", color(359, 15, 47));
+  // gColors.create("manatee", color(42, 77, 79));
+  
+  gColors.create("athensGrey", color(214, 2, 95));
+  gColors.create("breathless", color(228, 7, 80));
+  gColors.create("logan", color(229, 16, 71));
+  gColors.create("kingfisherBlue", color(231, 26, 55));
+  gColors.create("eastBay", color(229, 52, 48));
+
+  gColors.create("eighthStack", color(150, 2, 81));
+  gColors.create("grayishAzure", color(216, 24, 66));
+  gColors.create("isotonic", color(58, 16, 57));
+  gColors.create("lightGoldenrod", color(49, 45, 80));
+  gColors.create("darkBluishGrey", color(251, 6, 33));
+
+  // gColors.create("heather", color(150, 2, 76));
+  gColors.create("frozen", color(204, 24, 77));
+  gColors.create("moonstoneBlue", color(202, 39, 79));
+  // gColors.create("rollingFog", color(49, 45, 80));
+  gColors.create("bostonBlue", color(197, 63, 73));
+  
+  gColors.create("apricotWhite", color(48, 10, 96));
+  gColors.create("sandspitBrown", color(29, 15, 85));
+  gColors.create("suvaGrey", color(341, 3, 52));
+  gColors.create("viaduct", color(21, 8, 66));
+  gColors.create("birthdaySuit", color(15, 30, 83));
+
+  gColors.create("cloudy", color(45, 3, 67));
+  gColors.create("poloBlue", color(214, 32, 80));
+  gColors.create("pharlap", color(7, 21, 47));
+  gColors.create("breakerBay", color(182, 29, 49)); 
+
+}
+
+function initPalettes() {
+  gPalettes.create('NY', ["newYorkPink", "petiteOrchid", "chestnut", "auburn", "vanillaIce"]);
+  gPalettes.create('Biscotti', ["doubleBiscotti", "satinOrange", "sepia", "paleTaupe", "rock spray"]);
+  gPalettes.create('Obelisk', ["obelisk", "halfInnocence", "smoke", "yellowishGrey", "gurkha"]);
+  gPalettes.create('Brunette', ["crownOfThorns", "brunette", "halfLumberjack", "fedora", "cinereous"]);
+  gPalettes.create('Geebung', ["geebung", "goldDust", "intrepid", "putty", "lightYellow"]);
+  gPalettes.create('Sputnik', ["sputnik", "hammerhead", "regatta", "raven", "voltage"]);
+  gPalettes.create('Filmpro', ["filmproOrange", "japonica", "kamikaze", "bamboo", "rose"]);
+  
+  
+  gPalettes.create('Azure', ["windowsBlue", "mediumBlue", "funBlue", "azure", "toryBlue" ]);
+  gPalettes.create('Calypso', ["eskimo", "airForceBlue", "filmproSkyBlue", "submerge", "calypso" ]);
+  gPalettes.create('Bayoux', ["quarterJoss", "romanSilver", "doubleRakaia", "blueBayoux", "bondiBlue" ]);
+  gPalettes.create('Solitude', ["solitude", "fairytale", "ceil", "darkTurquoise", "indigo" ]);
+  gPalettes.create('Botticelli', ["columbiaBlue", "regentStBlue", "hoki", "meltwater", "botticelli" ]);
+  gPalettes.create('Nemo', ["rollingFog", "kimberly", "lightSteelBlue", "nemo", "twilight" ]);
+  gPalettes.create('Voodoo', ["quarterJoss", "voodoo", "whiskey", "moderateCobaltBlue", "monsoon" ]);
+  gPalettes.create('Roti', ["quarterSurrender", "slateGrey", "hillary", "superhero", "roti" ]);
+  gPalettes.create('Rust', ["cadetBlue", "rhythm", "greyOlive", "fishNChips", "copperRust" ]);
+  gPalettes.create('Bud', ["greyNurse", "bud", "laser", "sorrellBrown", "tulipTree" ]);
+  gPalettes.create('Oasis', ["tripleThorndonCream", "manatee", "desert", "mariner", "flax" ]);
+  gPalettes.create('Ship', ["heather", "shipCove", "moderateCobaltBlue", "washedGreen", "moderateAmber" ]);
+  gPalettes.create('Satin', ["halfBlanc", "romanCoffee", "greyblue", "spinnaker", "satinSheenGold" ]);
+  gPalettes.create('Farm', ["quarterMilkWhite", "paleSlate", "tonto", "eighthBarista", "manatee" ]);
+  gPalettes.create('Athena', ["athensGrey", "breathless", "logan", "kingfisherBlue", "eastBay" ]);
+  gPalettes.create('Tiara', ["eighthStack", "grayishAzure", "isotonic", "lightGoldenrod", "darkBluishGrey" ]);
+  gPalettes.create('Elsa', ["heather", "frozen", "moonstoneBlue", "rollingFog", "bostonBlue" ]);
+  gPalettes.create('Pearl', ["apricotWhite", "sandspitBrown", "suvaGrey", "viaduct", "birthdaySuit" ]);
+  gPalettes.create('Bay', ["quarterSurrender", "cloudy", "poloBlue", "pharlap", "breakerBay" ]);
+  
+}
+
+const GET_INTERSECTION = (p1, p2, p3, p4) => {
+  let d = (p1[0] - p2[0])*(p3[1] - p4[1]) - (p1[1] - p2[1])*(p3[0] - p4[0]);
+  let x = ((p1[0]*p2[1] - p1[1]*p2[0])*(p3[0] - p4[0]) - (p1[0] - p2[0])*(p3[0]*p4[1] - p3[1]*p4[0]))/d;
+  let y = ((p1[0]*p2[1] - p1[1]*p2[0])*(p3[1] - p4[1]) - (p1[1] - p2[1])*(p3[0]*p4[1] - p3[1]*p4[0]))/d;
+  return [x, y];
+}
+
+const GET_ANGLE = (a, b, c, d) => {
+  let u1 = b[0] - a[0];
+  let u2 = b[1] - a[1];
+  let v1 = d[0] - c[0];
+  let v2 = d[1] - c[1]; 
+  return atan2(u2, u1) - atan2(v2, v1);
+}
+
+const GET_MIDPOINT = (pointA, pointB) => {
+    var dX = (pointB[0] - pointA[0]) / 2;
+    var dY = (pointB[1] - pointA[1]) / 2;
+    return [pointA[0] + dX, pointA[1] + dY];
+  }
+
+const GET_SYMMETRICPOINT = (point, center) => {
+    var dX = (point[0] - center[0]);
+    var dY = (point[1] - center[1]);
+    return [center[0] - dX, center[1] - dY];
+  }
+
+  //Weights sum must be 1
+const GET_BARYCENTER = (points, weights) => {
+    var xs = GET_SUBARRAY(points, 1);
+    var ys =  GET_SUBARRAY(points, 2);
+    return [SUMPRODUCT(xs, weights), SUMPRODUCT(ys, weights)];
+  }
+
+const GET_DISTANCE = (pointA, pointB) => {
+    return sqrt(pow(pointB[0] - pointA[0], 2) +  pow(pointB[1] - pointA[1], 2));
+  }
+
+const SUMPRODUCT = (ar1, ar2) => {
+  if(ar1.length !== ar2.length)
+    throw new RangeError();
+  let sum = 0;
+  for(i=0; i<ar1.length; i++){
+    sum += ar1[i] * ar2[i];
+  }
+  return sum;
+}
+
+const GET_SUBARRAY = (ar, dim) => {
+  var ret = [];
+  for(i=0; i<ar.length; i++){
+    if(ar[i].length < dim)
+      throw new RangeError();
+    ret.push(ar[i][dim - 1]);
+  }
+  return ret;
+}
+
+const STROKE_WEIGHT = w => {
+  strokeWeight(w*width/1618);
+}
+
+const CONVERT_TO_TERNARY = n => {
+    // Base case
+    if (n == '0')
+        return n;
+
+    // Finding the remainder
+    // when N is divided by 3
+    let N = parseInt(n, 10);
+    let x = N % 3;
+    N = parseInt(N / 3, 10);
+    if (x < 0)
+        N += 1;
+
+    // Recursive function to
+    // call the function for
+    // the integer division
+    // of the value N/3
+    x = CONVERT_TO_TERNARY(N) + x;
+
+    // Handling the negative cases
+    if (x < 0)
+        return str(x + (3 * -1));
+    else
+        return str(x);
+}
+	</script>
+  </body>
+</html>

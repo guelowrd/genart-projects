@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+      <style>
+    body {
+      background: #FFFFFF;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: row;
+      margin: 0
+    }
+    canvas {
+      margin: auto;
+      display: block;
+      box-shadow: 0 2px 12px -2px rgba(0, 0, 0, .15)
+    }
+	</style>
+  </head>
+  <script language="javascript" type="text/javascript" src="https://cdn.jsdelivr.net/npm/p5@1.3.1/lib/p5.js"></script>
+  <script id="fxhash-snippet">
+  //---- do not edit the following code (you can indent as you wish)
+  let alphabet = "123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ"
+  var fxhash = "oo" + Array(49).fill(0).map(_=>alphabet[(Math.random()*alphabet.length)|0]).join('')
+  let b58dec = str=>[...str].reduce((p,c)=>p*alphabet.length+alphabet.indexOf(c)|0, 0)
+  let fxhashTrunc = fxhash.slice(2)
+  let regex = new RegExp(".{" + ((fxhashTrunc.length/4)|0) + "}", 'g')
+  let hashes = fxhashTrunc.match(regex).map(h => b58dec(h))
+  let sfc32 = (a, b, c, d) => {
+    return () => {
+      a |= 0; b |= 0; c |= 0; d |= 0
+      var t = (a + b | 0) + d | 0
+      d = d + 1 | 0
+      a = b ^ b >>> 9
+      b = c + (c << 3) | 0
+      c = c << 21 | c >>> 11
+      c = c + t | 0
+      return (t >>> 0) / 4294967296
+    }
+  }
+  var fxrand = sfc32(...hashes)
+  // true if preview mode active, false otherwise
+  // you can append preview=1 to the URL to simulate preview active
+  var isFxpreview = new URLSearchParams(window.location.search).get('preview') === "1"
+  // call this method to trigger the preview
+  function fxpreview() {
+    console.log("fxhash: TRIGGER PREVIEW")
+  }
+  //---- /do not edit the following code
+  </script>  
+  <body>
+    <script>
+let totCnt, gInitFrameDone, arb, nbArb, gSeed, axiom, sentence, count, idxLeaf, nbIter, flowerColor, flowerColors, leafColorLight, leafColorsLight, params, bMode, maxNoise, minNoise, gPhase, gPhaseBase, gFuncX, gFuncY, gLeastEps, gBestEps, gColors, gColorWeights, gMargin, gFinished, gLooping, gPd, gSaveAtTheEnd, gTexturingDone, gSlowMode, gShowWaitMessage, gPutain;
+var blendModes = ["BLEND", "SCREEN", "LIGHTEST", "SOFT_LIGHT", "OVERLAY", "DODGE", "BLEND", "SCREEN", "SOFT_LIGHT", "OVERLAY", "DODGE"];
+var textBlendModes = ["BLEND", "EXCLUSION", "DIFFERENCE", "HARD_LIGHT"];
+var rules = [];
+rules[0] = {
+    a: 'A1',
+    b: '!wFs[[+1A1]][[+2A2]],!wFs[[+2A2]][[+1A1]]'
+};
+rules[1] = {
+    a: 'A2',
+    b: '!wFs[[+1A1]][[+2A2]],!wFs[[+2A2]][[+1A1]]'
+};
+let allTrigoFuncs = [
+  x=>sin(x), 
+  x=>cos(x),
+  x=>2*sin(x)**2-1,
+  x=>2*cos(x)**2-1,
+  x=>((4+x)%2)-1
+];
+const totalDuration = 3333;
+
+function initSeed(optionalSeedValue) {
+  if (optionalSeedValue)
+    gSeed = optionalSeedValue;
+  else {
+    var seeds = [];
+    for(let i = 0; i < 1; i++) {
+      seeds.push(int(fxrand()*pow(10,12)));
+    }
+    gSeed = seeds.join('');
+  }
+  randomSeed(gSeed);
+  noiseSeed(gSeed);  
+}
+
+function keyReleased() {
+  if (key == 'p' || key == 'P') {
+    if (!gFinished) {
+      if (gLooping) {
+        noLoop();
+      } else {
+        loop();
+      }
+      gLooping = !gLooping;
+    }
+  } else if (key == 's' || key == 'S') {
+    let quality = gPd == 2 ? "low" : gPd == 3 ? "medium" : "high"; 
+    saveCanvas("Map Of Life #" + gSeed + " (" + quality + " quality)" + (gFinished ? "" : " - unfinished"));
+  } else if (key == '1' || key == '2' || key == '3') {
+    noLoop();
+    gPd = int(key) + 1;
+    gSaveAtTheEnd = false;
+    initSeed(gSeed);
+    setupSetup(true);
+    loop();
+  } else if (key == 'l' ||key == 'L') {
+    noLoop();
+    gSlowMode = !gSlowMode; 
+    initSeed(gSeed);
+    setupSetup(true);
+    loop();
+  } else if (key == 'q' ||key == 'Q') {
+    noLoop();
+    gPd = 3; 
+    gSlowMode = false;
+    gSaveAtTheEnd = true;
+    initSeed(gSeed);
+    setupSetup(false);
+    loop();
+  }
+}
+
+function setup() {
+  gSaveAtTheEnd = false;
+  initSeed();
+  gPd = 2;
+  gSlowMode = false;
+  setupSetup(true);
+}
+
+function setupSetup(adaptSizeToCurrentWindow) {
+  gPutain = 0;
+  background(100);
+  let canvasMaxWidth = 0.98*window.innerWidth;
+  let canvasMaxHeight = 0.98*window.innerHeight;
+  let canvasWidth = adaptSizeToCurrentWindow ? (21/29.7*canvasMaxWidth > canvasMaxHeight ? 29.7/21*canvasMaxHeight : canvasMaxWidth) : 3300;
+  let cnv = createCanvas(round(canvasWidth), round(21/29.7*canvasWidth));
+  cnv.id('my-canvas');
+  pixelDensity(gPd+1);
+  pixelDensity(gPd);
+  blendMode(BLEND);
+  colorMode(HSB);
+  background(100);
+  setNoiseExtremes();
+  setGlobalVariables();
+  createMetadata();
+  strokeWeight(234/width);
+  fill(49, 19, 49);
+  stroke(51);
+  noStroke();
+  loop();
+}
+
+function setGlobalVariables() {
+  gShowWaitMessage = !gSlowMode;
+  gFinished = false;
+  gTexturingDone = false;
+  gLooping = true;  
+  totCnt = 0
+  gInitFrameDone = false;
+  arb = 0;
+  axiom = 'A1';
+  gMargin = 0.03*width;
+  bMode = random(blendModes);
+  gPhaseBase = random([5.07, 6.97, 10.111]);
+  gPhase = int(5*random(0.1, 0.7))/5+0.07;
+  gFuncX = random(allTrigoFuncs);
+  gFuncY = random(allTrigoFuncs);
+  gLeastEps = int(random(1, 4))-0.1;
+  gBestEps = random([1, 1.618])-0.1618;
+  gColors = [color(211, 67, 79), color(208, 52, 79), color(202, 53, 82), color(201, 96, 61),
+            color(40, 20, 87), color(35, 46, 92), color(38, 74, 83), color(60, 86, 95),
+            color(90, 50, 56), color(50, 62, 52), color(151, 96, 42),
+            color(345, 80, 83), color(343, 57, 85)];
+  let nbRealColors = 4;
+  gColorWeights = [1/nbRealColors/4, 1/nbRealColors/4, 1/nbRealColors/4, 1/nbRealColors/4, 
+                  1/nbRealColors/4, 1/nbRealColors/4, 1/nbRealColors/4, 1/nbRealColors/4, 
+                  1/nbRealColors/3, 1/nbRealColors/3, 1/nbRealColors/3, 
+                  1/nbRealColors/2, 1/nbRealColors/2];
+  let nbColToRemove = int(random(0, gColorWeights.length/1.9));
+  for (let i=0; i < nbColToRemove; i++) {
+    let iRem = int(random(0, gColorWeights.length));
+    gColors.splice(iRem, 1);
+    gColorWeights.splice(iRem, 1);
+  }
+  nbArb = int(random(1.5, 3.25));
+  flowerColors = [color(60, 100, 100), color(0, 100, 100), color(39, 100, 100), color(300, 100, 50)];
+  leafColorsMedium = [ color(120, 100, 50), color(144, 54, 58), color(72, 58, 67), color(71, 37, 61)];
+  leafColorsLight = [color(70, 48, 84), color(67, 68, 86), color(71, 29, 80)];
+  leafColorsDark = [color(78, 65, 22), color(76, 67, 36), color(76, 77, 9)];  
+}
+
+function setNoiseExtremes() {
+  minNoise = 1; 
+  maxNoise = 0;
+  for (let x = 0; x < width; x += width/297) {
+    for (let y = 0; y < height; y += height/210) {
+      minNoise = min(minNoise, noise(x/width, y/height));
+      maxNoise = max(maxNoise, noise(x/width, y/height));
+    }
+  }
+}
+
+function setupTrees() {
+  resetMatrix();  
+  colorMode(HSB);
+  rectMode(CENTER);
+  if (bMode == "SCREEN")
+    blendMode(SCREEN);
+  else if (bMode == "LIGHTEST")
+    blendMode(LIGHTEST);
+  else if (bMode == "SOFT_LIGHT")
+    blendMode(SOFT_LIGHT);
+  else if (bMode == "OVERLAY")
+    blendMode(OVERLAY);
+  else if (bMode == "DODGE")
+    blendMode(DODGE);
+  else
+    blendMode(BLEND);
+  smooth();
+  sentence = axiom;
+  count = 0;
+  idxLeaf = 0;
+  flowerColor = random(flowerColors); 
+  leafColorLight = random(leafColorsLight);
+  leafColorLight = color(randomGaussian(hue(leafColorLight), 3), randomGaussian(saturation(leafColorLight), 1), randomGaussian(brightness(leafColorLight), 1));
+  leafColorMedium = random(leafColorsMedium);
+  leafColorMedium = color(randomGaussian(hue(leafColorMedium), 3), randomGaussian(saturation(leafColorMedium), 1), randomGaussian(brightness(leafColorMedium), 1));
+  leafColorDark = random(leafColorsDark);
+  leafColorDark = color(randomGaussian(hue(leafColorDark), 3), randomGaussian(saturation(leafColorDark), 1), randomGaussian(brightness(leafColorDark), 1));  
+  params = {
+    r1: 0.60,
+    r2: 0.85,
+    a1: 25,
+    a2: -15,
+    p1: 180,
+    p2: 180,
+    w0: 20*height/800,
+    q: 0.45,
+    e: 0.50,
+    n: 10,
+    s0: 120*height/999
+  };
+}
+
+function turtle(x0, y0, params) {
+  var s0 = max(70*height/999, min(170*height/999, randomGaussian(params.s0, params.s0/10)));
+  var w0 = max(20*height/999, min(220*height/999, randomGaussian(params.w0, params.w0/7)));
+  var r1 = max(0.55, min(0.95, randomGaussian(params.r1, 0.05)));
+  var r2 = max(0.55, min(0.95, randomGaussian(params.r2, 0.05)));
+  var a1 = params.a1/abs(params.a1)*max(10, min(80, randomGaussian(abs(params.a1), 6)));
+  var a2 =  params.a2/abs(params.a2)*max(10, min(80, randomGaussian(abs(params.a2), 6)));
+  var p1 = randomGaussian(abs(params.p1), 6);
+  var p2 = randomGaussian(abs(params.p2), 6);  
+  var q = params.q;
+  var e = params.e;
+  if (random(1) > 0.5) {
+    let a = a1;
+    a1 = a2;
+    a2 = a;
+  }
+  var s = s0;
+  var w = w0;
+  var x = 1;
+  var y = 1;
+  var z = 1;
+  strokeWeight(w);  
+  var sStack = new Stack(); 
+  var wStack = new Stack();
+  var xStack = new Stack(); 
+  var yStack = new Stack(); 
+  var zStack = new Stack(); 
+  sStack.push(s);
+  wStack.push(w);
+  xStack.push(x);
+  yStack.push(y);
+  zStack.push(z);
+  translate(x0, y0);
+  for (var i = 0; i < sentence.length; i+=2) {
+    var current = sentence.charAt(i) + sentence.charAt(i + 1);
+    if (current == 'Fs') {
+      idxLeaf++;
+      push();
+      strokeWeight(wStack.peek()/9);
+      for (let b = 0; b<wStack.peek()*5/height*2000; b++) {
+        stroke(randomGaussian(17,6), randomGaussian(60, 10), randomGaussian(49, 10), 0.6);
+        fill(randomGaussian(17,6), randomGaussian(60, 10), randomGaussian(49, 10), 0.2);
+        beginShape();
+        vertex(0+randomGaussian(0,wStack.peek()*0.2), 0+randomGaussian(0,wStack.peek()/9));
+        vertex(0+randomGaussian(0,wStack.peek()*0.15), -0.25*sStack.peek()+randomGaussian(0,wStack.peek()/9));
+        vertex(0+randomGaussian(0,wStack.peek()*0.14), -0.75*sStack.peek()+randomGaussian(0,wStack.peek()/9));
+        vertex(0+randomGaussian(0,wStack.peek()*0.17), -sStack.peek()+randomGaussian(0,wStack.peek()/9));
+        endShape();
+      }
+      pop();
+      translate(0, -sStack.peek());
+    } else if (current == 'A1') {
+      line(0, 0, 0, -sStack.peek());
+      push();
+      noStroke();
+      let fCol;
+      let fColDraw = random(0, 1);
+      if (fColDraw < 0.25) {
+        fCol = color(leafColorLight);
+        fCol.setAlpha(randomGaussian(0.08, 0.008));
+      } else if (fColDraw < 0.75) {
+        fCol = color(leafColorMedium);
+        fCol.setAlpha(randomGaussian(0.31, 0.2));
+      } else {
+        fCol = color(leafColorDark);
+        fCol.setAlpha(randomGaussian(0.09, 0.008));
+      }
+      fill(fCol);
+      for (let f=0; f<38; f++) {
+        rect(randomGaussian(0.1*s0, s0/4), randomGaussian(0, 0.12*s0), randomGaussian(0.1*s0, s0/4), -randomGaussian(0, 0.12*s0))
+      }
+      pop();
+      translate(0, -sStack.peek());
+      push();
+      noStroke();
+      fill(random([flowerColor, color(60, 10, 96)]));
+      if (random(0, 1) < 0.5)
+        circle(0, 0, randomGaussian(height*0.00618, height*0.001618));
+      pop();
+    } else if (current == 'A2') {
+      line(0, 0, 0, -sStack.peek());
+      translate(0, -sStack.peek());
+      push();
+      noStroke();
+      fill(flowerColor);
+      if (random(0, 1) < 0.5)
+        circle(0, 0, randomGaussian(height*0.00618, height*0.001618));
+      pop();
+    } else if (current == '+1') {
+        let rot1 = -a1*PI/180;
+        rotate(rot1*zStack.peek());
+    } else if (current == '+2') {
+        let rot2 = -a2*PI/180;
+        rotate(rot2*zStack.peek());
+    } else if (current == '!w') {
+        strokeWeight(w);
+    } else if (current == '[[') {
+      push();
+      sStack.push(s);
+      wStack.push(w);
+      xStack.push(x);
+      yStack.push(y);
+      zStack.push(z);
+      if (sentence.charAt(i + 3) == '1') {
+        s *= r1;
+        w *= pow(q, e);
+        let newx = x*cos(-a1*PI/180) - y*sin(-a1*PI/180);
+        y = x*sin(-a1*PI/180) + y*cos(-a1*PI/180);
+        x = newx;
+        let newz = z*cos(p1*PI/180) - x*sin(p1*PI/180);
+        x = z*sin(p1*PI/180) + x*cos(p1*PI/180);
+        z = newz;
+      } else {
+        s *= r2;
+        w *= pow(1 - q, e);
+        let newx = x*cos(-a2*PI/180) - y*sin(-a2*PI/180);
+        y = x*sin(-a2*PI/180) + y*cos(-a2*PI/180);
+        x = newx;
+        let newz = z*cos(p2*PI/180) - x*sin(p2*PI/180);
+        x = z*sin(p2*PI/180) + x*cos(p2*PI/180);
+        z = newz;            
+      }
+    } else if (current == ']]') {
+      s = sStack.peek();
+      w = wStack.peek();
+      x = xStack.peek();
+      y = yStack.peek();
+      z = zStack.peek();
+      sStack.pop();
+      wStack.pop();
+      xStack.pop();
+      yStack.pop();
+      zStack.pop();
+      pop();
+      count++;
+    }
+  }
+  if (i >= sentence.length) {
+    finished = true;
+    let finalTxtCol = color(60, 10, 96);
+    finalTxtCol.setAlpha(0.35);
+    fill(finalTxtCol);
+  }
+}
+
+function generateStems(iterations, x0, y0, params) {
+  for (let i = iterations - 1; i > 0 ; i--) {
+    branch();
+    if (i==1) {
+      idxLeaf = 0;
+      turtle(x0, y0, params);
+    }
+  }
+}
+
+function branch() {
+  var nextSentence = '';
+  for (var i = 0; i < sentence.length; i+=2) {
+    var current = sentence.charAt(i) + sentence.charAt(i + 1);
+    var found = false;
+    for (var j = 0; j < rules.length; j++) {
+      if (current == rules[j].a) {
+        found = true;
+        nextSentence += shuffle(split(rules[j].b, ','))[0];
+        break;
+      }
+    }
+    if (!found) {
+      nextSentence += current;
+    }
+  }
+  sentence = nextSentence;
+}
+
+function draw() {
+  if (gShowWaitMessage) {
+    displayWaitMessage();
+    gShowWaitMessage = false;
+  } else {
+    if (!gInitFrameDone) {
+      for (var kkkkk = 0; kkkkk<17500; kkkkk++) {
+        circle(random(1)*1.9*gMargin, 1.9*gMargin + random(1)*(height - 2*1.9*gMargin), width/6000);
+        circle(random(1)*width, height - 1.9*gMargin + random(1)*1.9*gMargin, width/6000);
+        circle(width - 1.9*gMargin + random(1)*1.9*gMargin, 1.9*gMargin + random(1)*(height-1.9*gMargin), width/6000);
+        circle(random(1)*width, random(1)*1.9*gMargin, width/6000);
+      }
+      gInitFrameDone = true;
+    }
+    if (totCnt < totalDuration) {
+      backgroundDraw();
+    } else if (!gTexturingDone) {
+      addBubbles();
+      gTexturingDone = true;
+    } else {
+      if (arb < nbArb) {
+        strokeWeight(0);
+        stroke('brown');
+        setupTrees();
+        let x0 = randomGaussian((arb+1)*(width)/(nbArb+1), width/44);
+        let yStart = getNonGrayPixelVerticalUp(x0, height - 2.5*gMargin, height - 9*gMargin);
+        generateStems(params.n, x0, (yStart ? yStart : height - 3*gMargin) + randomGaussian(0, 0.008*height), params);
+        arb++;
+      } else if (gPutain < 1) {
+        resetMatrix();
+        textSize(height/40);
+        let txtBlendMode = random(textBlendModes);
+        if (txtBlendMode == "EXCLUSION")
+          blendMode(EXCLUSION);
+        else if (txtBlendMode == "DIFFERENCE")
+          blendMode(DIFFERENCE);
+        else if (txtBlendMode == "HARD_LIGHT")
+          blendMode(HARD_LIGHT);
+        else
+          blendMode(BLEND);      
+        text("A map of life #" + (gSeed>0 ? "P" : "N") + abs(gSeed), 0.02*width, 0.029*height);
+        noLoop();
+        gLooping = false;
+        gFinished = true;
+        if (gSaveAtTheEnd) {
+          saveCanvas("Map Of Life #" + gSeed + " (best quality)");
+          gSaveAtTheEnd = false;
+        }
+        blendMode(BLEND);
+        gPutain++;
+        fxpreview();
+      }
+    }
+  }
+}
+
+function displayWaitMessage() {  
+  push();
+  textSize(height/33);
+  textAlign(CENTER, CENTER);
+  text("Drawing the map, please wait a bit...", width/2, height/2);
+  pop();
+}
+
+function backgroundDraw() {
+  if (gSlowMode)
+    backgroundDrawProgressive();
+  else
+    backgroundDrawFast();
+}
+
+function backgroundDrawProgressive() {
+  let zone;
+  let t = totCnt;
+  if(randomGaussian(totalDuration*0.55, totalDuration/8)>t) {
+    zone = {
+      left: gMargin,
+      right: width - gMargin, //0.5*width,
+      top: gMargin,
+      bottom: height - gMargin
+    };
+    totCnt++;
+    drawFirstStuffs(zone);
+  } else {
+    zone = {
+      left: 3*gMargin,
+      right: width - 3*gMargin, //0.5*width,
+      top: 3*gMargin,
+      bottom: height - 3*gMargin
+    };
+    totCnt++;
+    drawSecondStuffs(zone);
+  }
+}
+
+function backgroundDrawFast() {
+  let zone;
+  while (totCnt < totalDuration) {
+    let t = totCnt;
+    if(randomGaussian(totalDuration*0.55, totalDuration/8)>t) {
+      zone = {
+        left: gMargin,
+        right: width - gMargin,
+        top: gMargin,
+        bottom: height - gMargin
+      };
+      totCnt++;
+      drawFirstStuffs(zone);
+    } else {
+      zone = {
+        left: 3*gMargin,
+        right: width - 3*gMargin,
+        top: 3*gMargin,
+        bottom: height - 3*gMargin
+      };
+      totCnt++;
+      drawSecondStuffs(zone);
+    }
+  }
+}
+
+function addBubbles() {
+  loadPixels();
+  let nbSteps = 99;
+  let rDiv = int(random(1, 9));
+  let bDiv = int(random(1, 9));
+  let randomIntX = random(0.51, 9);
+  let randomIntY = random(0.51, 9);
+  for (let ix = 0; ix <= nbSteps; ix++) {
+    for (let iy = 0; iy <= nbSteps; iy++) {
+      let x = 2*gMargin + (width - 4*gMargin)*ix/nbSteps;
+      let y = 2*gMargin + (height - 4*gMargin)*iy/nbSteps;
+      let pxHsbCol = pickColor(x, y);
+      let pxCols = [red(pxHsbCol), green(pxHsbCol), blue(pxHsbCol)];
+      let avgRgb = (pxCols[0] + pxCols[1] + pxCols[2])/3;
+      let maxRgb = max(pxCols[0], pxCols[1], pxCols[2]);
+      let multStuf = maxRgb == pxCols[0] ? 1 : maxRgb == pxCols[1] ? 1.9 : 2.75;  
+      x += (avgRgb <128 ? -1 : 1)*(height - 6*gMargin)*iy/nbSteps/(max(3, (pxCols[0] + pxCols[1])/200));
+      y += (avgRgb <128 ? -1 : 1)*(height - 6*gMargin)*ix/nbSteps/(max(2.5, (pxCols[1] + pxCols[2])/111));
+      let rayon = multStuf*(height - 6*gMargin)/nbSteps/2*myNoise(x-multStuf*gMargin, y+multStuf*gMargin, 0);
+      let pxColsReal = getPixelNoLoad(x, y);
+      let rdmAlpha = random(0.5, 0.8);
+      if ((abs(pxColsReal[0] - pxColsReal[1]) > 1) || (abs(pxColsReal[0] - pxColsReal[2]) > 1)) {
+        pxHsbCol = pickColor(x, y);
+        pxCols = [red(pxHsbCol), green(pxHsbCol), blue(pxHsbCol)];
+        for (let i = -rayon; i <= rayon; i++) {
+          for (let j = -rayon; j <=rayon; j++) {
+            if (sqrt(i**2 + j**2) <= rayon)
+              updatePixel(x + i, y + j,
+                  (4/5+int((pxCols[0]*ix+1)*randomIntX + (pxCols[1]*iy+2)*randomIntY)%int(nbSteps/rDiv)/(int(nbSteps/rDiv)-1)/5),
+                  (4/5+int((pxCols[1]*ix+3)*randomIntX + (pxCols[2]*iy+5)*randomIntY)%int(nbSteps/rDiv)/(int(nbSteps/rDiv)-1)/5),
+                  (4/5+int((pxCols[2]*ix+11)*randomIntX + (pxCols[0]*iy+13)*randomIntY)%int(nbSteps/rDiv)/(int(nbSteps/rDiv)-1)/5),
+                  rdmAlpha);
+          }
+        }
+      }
+    }
+  }
+  updatePixels();
+}
+
+function getNonGrayPixelVerticalUp(x0, y0, maxY) {
+  let step = (y0 - maxY)/20;
+  let y = y0 + step;
+  while (y < maxY) {
+    y -= step;
+    let px = getPixel(x0, y);
+    if (px[0] != px[1] || px[0] != px[2]) {
+      return y;
+    }
+  }
+  return false;
+}
+
+function getPixel(x, y) {
+  loadPixels();
+  return getPixelNoLoad(x, y);
+}
+
+function getPixelNoLoad(x, y) {
+  let r = [];
+  let g = [];
+  let b = [];
+  let a = [];
+  let d = gPd;
+  for (let i = -d; i < 2*d; i++) {
+    for (let j = -d; j < 2*d; j++) {
+      let index = 4 * ((int(y-1) * d) * width * d + (int(x-1) * d));
+      r.push(pixels[index]);
+      g.push(pixels[index + 1]);
+      b.push(pixels[index + 2]);
+      a.push(pixels[index + 3]);
+    }
+  }
+  let rAvg = 0;
+  let gAvg = 0;
+  let bAvg = 0;
+  let aAvg = 0;
+  let n = r.length;
+  for (let p = 0; p < n; p++) {
+    rAvg += r[p];
+    gAvg += g[p];
+    bAvg += b[p];
+    aAvg += a[p];
+  }
+  return [rAvg/n, gAvg/n, bAvg/n, aAvg/n];
+}
+
+function updatePixel(x, y, rFactor, gFactor, bFactor, aFactor) {
+  let d = gPd;
+  for (let i = 0; i < d; i++) {
+    for (let j = 0; j < d; j++) {
+      let index = 4 * ((int(y-1) * d + j) * width * d + (int(x-1) * d + i));
+      index = int(index);
+      pixels[index] *= rFactor;   
+      pixels[index+1] *= gFactor; 
+      pixels[index+2] *= bFactor; 
+      pixels[index+3] *= aFactor; 
+    }
+  }
+}
+
+function drawFirstStuffs(zone) {
+  let howManyStuffs = max(1, totalDuration/20*(1- 1.2*totCnt/totalDuration));
+  let nbVertices = random([3, 3, 3, 3, 3, 3, 4]);
+  nbVertices = random(1) < 0.006 ? 5 : nbVertices;
+  for (let i = 0; i < howManyStuffs; i++) {
+    let x = zone.left + random(1)*(zone.right - zone.left);
+    let y = zone.top + random(1)*(zone.bottom - zone.top);
+    let s = gLeastEps*0.005*(zone.right - zone.left + zone.bottom - zone.top) / 2;
+    let theta0 = random(0, PI);
+    fill(100*myNoise(x, y), 0.94);
+    stroke(150*myNoise(x, y), 0.89);
+    beginShape();
+    for (let v = 0; v < nbVertices; v++) {
+      let theta =  theta0 + 2*PI/nbVertices*v;
+      vertex(x + s*cos(theta), y + s*sin(theta));
+    }
+    endShape();    
+  }
+}
+
+function drawSecondStuffs(zone) {
+  let howManyStuffs = totCnt < 0.8*totalDuration ? int(random(1, 4)) : 1;
+  let nbVertices = 13;//random([5, 6, 7]);
+  let nbDrawers = int(16.5-10*totCnt/totalDuration);//13;
+  for (let k=0; k<nbDrawers; k++) {
+    for (let i = 0; i < howManyStuffs; i++) {
+      let r = gBestEps*randomGaussian(0.0162, 0.002 + 0.00005*(150-totCnt/60))*(zone.right - zone.left + zone.bottom - zone.top) / 2;
+      let x = tOscill(zone.left + r, zone.right - r, 0+k, gFuncX);
+      let y = tOscill(zone.top + r, zone.bottom - r, gPhase+k, gFuncY);
+      let theta0 = 0;//random(0, PI);
+      let origCol = pickColor(x, y);
+      let h = hue(origCol);
+      let s = saturation(origCol);
+      let b = brightness(origCol);
+      let col = color(h + 7*(-1 + 2*myNoise(width + x, height + y, 0)), s + 7*(-0.75 + 2*myNoise(width + x, height + y, 0)), b + 7*(-0.75 + 2*myNoise(width + x, height + y, 0)));
+      col.setAlpha(0.73);
+      fill(col);
+      stroke(col);
+      beginShape();
+      for (let v = 0; v < nbVertices; v++) {
+        let theta =  theta0 + 2*PI/nbVertices*v;
+        vertex(x + r*cos(theta), y + r*sin(theta));
+      }
+      endShape();    
+    }
+  }
+  gPhase += exp(1)/10/totCnt*6;
+}
+
+function createMetadata() {
+  window.$fxhashFeatures = {
+    "...even if it's just ": (nbArb == 1 ? "a lone tree" : nbArb == 2 ? "a couple of trees" : "a few trees") + "...",
+    "...in ": (bMode == "SCREEN" ? "a luminescent forest" : bMode == "LIGHTEST" ? "an evanescent forest" : bMode == "SOFT_LIGHT" ? "a dark forest" : bMode == "OVERLAY" ? "a burning forest" : bMode == "DODGE" ? "a forest of light" : "a green forest") + "...",
+    "...like ": ((gFuncX == allTrigoFuncs[0] || gFuncX == allTrigoFuncs[1]) && (gFuncY == allTrigoFuncs[0] || gFuncY == allTrigoFuncs[1]) ? "an electron around the nucleus" : (gFuncX == allTrigoFuncs[2] || gFuncX == allTrigoFuncs[3]) && (gFuncY == allTrigoFuncs[2] || gFuncY == allTrigoFuncs[3]) ? "a planet orbiting the sun" : (gFuncX == allTrigoFuncs[2] || gFuncX == allTrigoFuncs[3]) && (gFuncY == allTrigoFuncs[0] || gFuncY == allTrigoFuncs[1]) ? "a bee next to the hive" : (gFuncX == allTrigoFuncs[0] || gFuncX == allTrigoFuncs[1]) && (gFuncY == allTrigoFuncs[2] || gFuncY == allTrigoFuncs[3]) ? "a butterfly basking in the sunshine" : (gFuncX == allTrigoFuncs[4] && (gFuncY == allTrigoFuncs[0] || gFuncY == allTrigoFuncs[1])) ? "a trout in the river" : (gFuncX == allTrigoFuncs[4] && (gFuncY == allTrigoFuncs[2] || gFuncY == allTrigoFuncs[3])) ? "a nucleotide in the DNA" : (gFuncX == allTrigoFuncs[4] && gFuncY == allTrigoFuncs[4]) ? "a shooting star through the mesosphere" : (gFuncX == allTrigoFuncs[0] || gFuncX == allTrigoFuncs[1]) && (gFuncY == allTrigoFuncs[4]) ? "a snake in the desert" : "a raindrop on the window") + "...",
+    "...despite all the ": (gLeastEps < 1 ? "hassle" : gLeastEps < 2 ? "problems" : "sorrow") + "...", 
+    "...whether ": (gBestEps < 1 ? "pessimistic" : "optimistic") + " or not...",
+    "...you can draw ": "a map of life..."
+  };
+}
+
+function pickColor(x, y) {
+  let r =  myNoise(x, y, 0);
+  let prob = 0;
+  for (let i=0; i<gColorWeights.length; i++) {
+    prob += gColorWeights[i];
+    if (r < prob)
+      return gColors[i];
+  }
+  let col = gColors[gColors.length-1];
+  col.setAlpha(0.94);
+  return col;
+}
+
+function myNoise(x, y, speed) {
+  let spd;
+  if (speed == undefined)
+    spd = 1/6;
+  else
+    spd = speed;
+  return (noise(x/width+totCnt/6*100*spd/1500, y/width) - minNoise)/(maxNoise - minNoise);
+}
+
+function tOscill(l, h, p, f) {
+  let low, high, phi, fun;
+  if (l == undefined)
+    low = 0;
+  else
+    low = l;
+  if (h == undefined)
+    high = max(1, low);
+  else
+    high = h;
+  if (p == undefined)
+    phi = 1;
+  else
+    phi = p;
+  if (f == undefined)
+    fun = sin;
+  else
+    fun = f; 
+  return low + (high-low)*(1 + fun(totCnt/60+phi))/2;
+}
+
+// Define Stack function 
+function Stack(array) {
+    this.array = [];
+    if (array) this.array = array;
+}
+
+// Add Get Buffer property to object
+// constructor which slices the array
+Stack.prototype.getBuffer = function() {
+    return this.array.slice();
+}
+
+// Add isEmpty properties to object
+// constructor which returns the
+// length of the array
+Stack.prototype.isEmpty = function() {
+    return this.array.length == 0;
+}
+
+// Add Push property to object constructor
+// which push elements to the array
+Stack.prototype.push = function(value) {
+    this.array.push(value);
+}
+
+// Pop operation
+Stack.prototype.pop = function() {
+    return this.array.pop();
+}
+
+// Peek Function
+Stack.prototype.peek = function() {
+    return this.array[this.array.length-1];
+}
+	</script>
+  </body>
+</html>
